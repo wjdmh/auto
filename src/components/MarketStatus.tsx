@@ -46,8 +46,8 @@ export default function MarketStatus() {
         const res = await fetch('/api/market-status');
         const json = await res.json();
         setClock(json);
-      } catch {
-        /* empty */
+      } catch (err) {
+        console.error('MarketStatus Fetch Error:', err);
       }
     }
     load();
@@ -82,9 +82,8 @@ export default function MarketStatus() {
       {/* 장 상태 */}
       <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--card)]">
         <span
-          className={`w-2 h-2 rounded-full ${
-            clock.isOpen ? 'bg-green-400 animate-pulse' : 'bg-gray-500'
-          }`}
+          className={`w-2 h-2 rounded-full ${clock.isOpen ? 'bg-green-400 animate-pulse' : 'bg-gray-500'
+            }`}
         />
         <span className="text-sm text-[var(--text-secondary)]">
           {clock.isOpen ? '장 열림' : '장 마감'}

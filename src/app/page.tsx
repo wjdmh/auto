@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { DashboardData, TargetStory } from '@/types';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import EmptyState from '@/components/EmptyState';
@@ -17,8 +17,40 @@ import MissionTimeline from '@/components/MissionTimeline';
 import LiveLog from '@/components/LiveLog';
 import NewsFeed from '@/components/NewsFeed';
 import DetailSheet from '@/components/DetailSheet';
+import ReviewMode from '@/components/ReviewMode';
+import WorkflowGuide from '@/components/WorkflowGuide';
 
 const REFRESH_INTERVAL = 15_000;
+
+type FilterTab = 'all' | 'bought' | 'watching';
+
+/** 상대 시간 포맷 */
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const sec = Math.floor(diff / 1000);
+  if (sec < 10) return '방금';
+  if (sec < 60) return `${sec}초 전`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  return `${hr}시간 전`;
+}
+
+/** 위험도 기준 정렬 (손실 큰 종목 → SL근접 → 일반) */
+function sortByRisk(targets: TargetStory[]): TargetStory[] {
+  return [...targets].sort((a, b) => {
+    // 1순위: 매수 종목 먼저
+    if (a.status === 'BOUGHT' && b.status !== 'BOUGHT') return -1;
+    if (a.status !== 'BOUGHT' && b.status === 'BOUGHT') return 1;
+    // 2순위: 매수 종목 중 손실 큰 순서
+    const plA = a.position?.unrealizedPL ?? 0;
+    const plB = b.position?.unrealizedPL ?? 0;
+    if (a.status === 'BOUGHT' && b.status === 'BOUGHT') {
+      return plA - plB; // 손실이 큰 것이 먼저
+    }
+    return 0;
+  });
+}
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -29,6 +61,9 @@ export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split('T')[0]
   );
+  const [filterTab, setFilterTab] = useState<FilterTab>('all');
+  const [isMarketOpen, setIsMarketOpen] = useState<boolean | null>(null);
+  const [relTime, setRelTime] = useState('');
 
   // Pull-to-refresh
   const mainRef = useRef<HTMLDivElement>(null);
@@ -37,6 +72,23 @@ export default function DashboardPage() {
   const isPulling = useRef(false);
 
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
+
+  // 장 상태 조회
+  useEffect(() => {
+    async function checkMarket() {
+      try {
+        const res = await fetch('/api/market-status');
+        const json = await res.json();
+        setIsMarketOpen(json.isOpen);
+      } catch (err) {
+        console.error('Page Market Check Error:', err);
+        setIsMarketOpen(null);
+      }
+    }
+    checkMarket();
+    const t = setInterval(checkMarket, 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setRefreshing(true);
@@ -66,6 +118,23 @@ export default function DashboardPage() {
     }
   }, [fetchData, isToday]);
 
+  // 상대 시간 업데이트
+  useEffect(() => {
+    if (!data) return;
+    setRelTime(relativeTime(data.lastUpdated));
+    const t = setInterval(() => setRelTime(relativeTime(data.lastUpdated)), 10_000);
+    return () => clearInterval(t);
+  }, [data?.lastUpdated]);
+
+  // 필터 + 위험도 정렬
+  const filteredTargets = useMemo(() => {
+    if (!data) return [];
+    let targets = data.targets;
+    if (filterTab === 'bought') targets = targets.filter((t) => t.status === 'BOUGHT');
+    else if (filterTab === 'watching') targets = targets.filter((t) => t.status === 'WATCHING');
+    return sortByRisk(targets);
+  }, [data, filterTab]);
+
   // Pull-to-refresh handlers
   function handleTouchStart(e: React.TouchEvent) {
     if (mainRef.current && mainRef.current.scrollTop === 0) {
@@ -73,37 +142,26 @@ export default function DashboardPage() {
       isPulling.current = true;
     }
   }
-
   function handleTouchMove(e: React.TouchEvent) {
     if (!isPulling.current) return;
     const dy = e.touches[0].clientY - touchStartY.current;
-    if (dy > 0 && dy < 120) {
-      setPullDistance(dy);
-    }
+    if (dy > 0 && dy < 120) setPullDistance(dy);
   }
-
   function handleTouchEnd() {
-    if (pullDistance > 60) {
-      fetchData();
-    }
+    if (pullDistance > 60) fetchData();
     setPullDistance(0);
     isPulling.current = false;
   }
 
-  // Skeleton loading
-  if (loading) {
-    return <SkeletonLoader />;
-  }
+  if (loading) return <SkeletonLoader />;
+  if (error && !data) return <EmptyState type="error" message={error} onRetry={fetchData} />;
+  if (!data) return <EmptyState type="no-data" />;
 
-  // Error state
-  if (error && !data) {
-    return <EmptyState type="error" message={error} onRetry={fetchData} />;
-  }
+  // 장 마감 + 오늘 + 타겟 없음 → 복기 모드
+  const showReviewMode = isToday && isMarketOpen === false && data.targets.length === 0;
 
-  // No data
-  if (!data) {
-    return <EmptyState type="no-data" />;
-  }
+  const boughtCount = data.targets.filter((t) => t.status === 'BOUGHT').length;
+  const watchingCount = data.targets.filter((t) => t.status === 'WATCHING').length;
 
   return (
     <div
@@ -115,13 +173,9 @@ export default function DashboardPage() {
     >
       {/* Pull-to-refresh indicator */}
       {pullDistance > 0 && (
-        <div
-          className="flex items-center justify-center transition-all"
-          style={{ height: pullDistance }}
-        >
-          <div className={`w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full ${
-            pullDistance > 60 ? 'animate-spin' : ''
-          }`} style={{ transform: `rotate(${pullDistance * 3}deg)` }} />
+        <div className="flex items-center justify-center transition-all" style={{ height: pullDistance }}>
+          <div className={`w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full ${pullDistance > 60 ? 'animate-spin' : ''
+            }`} style={{ transform: `rotate(${pullDistance * 3}deg)` }} />
         </div>
       )}
 
@@ -133,20 +187,13 @@ export default function DashboardPage() {
       )}
 
       <main className="pb-safe">
-        {/* Header + 테마 토글 */}
         <InsightHeader data={data} />
-
-        {/* 시스템 정보 배너 (가상계좌 + 자동매매 안내) */}
         <SystemInfoBanner />
-
-        {/* 안전 차단기 배너 */}
         <SafetyBanner safety={data.safety} />
-
-        {/* 장 상태 + AI 스캔 주기 */}
         <MarketStatus />
 
-        {/* 날짜 선택 + 수동 새로고침 */}
-        <div className="flex items-center gap-2 px-5 pb-4">
+        {/* 날짜 선택 + 상대 시간 + 새로고침 */}
+        <div className="flex items-center gap-2 px-5 pb-2">
           <div className="flex-1">
             <DatePicker selectedDate={selectedDate} onChange={setSelectedDate} />
           </div>
@@ -162,61 +209,103 @@ export default function DashboardPage() {
             </svg>
           </button>
         </div>
+        {relTime && (
+          <p className="px-5 pb-4 text-[11px] text-[var(--text-tertiary)]">{relTime} 업데이트</p>
+        )}
 
         <div className="h-1.5 bg-[var(--background)]" />
 
-        {/* 주간 요약 */}
-        <div className="pt-5">
-          <WeeklySummary />
-        </div>
+        {showReviewMode ? (
+          /* ===== 복기 모드 ===== */
+          <div className="pt-5">
+            <ReviewMode />
+          </div>
+        ) : (
+          /* ===== 실시간 모드 ===== */
+          <>
+            {/* 주간 요약 */}
+            <div className="pt-5">
+              <WeeklySummary />
+            </div>
 
-        {/* 누적 수익률 차트 */}
-        <PnLChart />
+            <PnLChart />
+            <WinRateStats />
 
-        {/* 승률 통계 */}
-        <WinRateStats />
+            <div className="h-1.5 bg-[var(--background)]" />
 
-        <div className="h-1.5 bg-[var(--background)]" />
+            <div className="pt-5">
+              <ThemeCloud targets={data.targets} />
+            </div>
 
-        {/* 테마 태그 클라우드 */}
-        <div className="pt-5">
-          <ThemeCloud targets={data.targets} />
-        </div>
+            {/* 필터 탭 + 종목 리스트 */}
+            <div>
+              <div className="px-5 flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-[var(--text-primary)]">
+                  정찰 &amp; 매매 스토리
+                </h2>
+              </div>
 
-        {/* 정찰 & 매매 스토리 */}
-        <div>
-          <h2 className="px-5 text-lg font-bold text-[var(--text-primary)] mb-4">
-            정찰 &amp; 매매 스토리
-          </h2>
-          {data.targets.length > 0 ? (
-            <MissionTimeline
-              targets={data.targets}
-              onSelectTarget={setSelectedTarget}
-            />
-          ) : (
-            <EmptyState type="no-data" />
-          )}
-        </div>
+              {/* 필터 탭 */}
+              {data.targets.length > 0 && (
+                <div className="px-5 flex gap-2 mb-4">
+                  {([
+                    { key: 'all' as FilterTab, label: '전체', count: data.targets.length },
+                    { key: 'bought' as FilterTab, label: '보유중', count: boughtCount },
+                    { key: 'watching' as FilterTab, label: '대기', count: watchingCount },
+                  ]).map(({ key, label, count }) => (
+                    <button
+                      key={key}
+                      onClick={() => setFilterTab(key)}
+                      className={`text-xs px-3 py-1.5 rounded-full transition-colors ${filterTab === key
+                          ? 'bg-[var(--accent)] text-white'
+                          : 'bg-[var(--card)] text-[var(--text-tertiary)]'
+                        }`}
+                    >
+                      {label} {count > 0 && <span className="ml-0.5 opacity-70">{count}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-        <div className="h-1.5 bg-[var(--background)]" />
+              {filteredTargets.length > 0 ? (
+                <MissionTimeline
+                  targets={filteredTargets}
+                  onSelectTarget={setSelectedTarget}
+                />
+              ) : data.targets.length > 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-sm text-[var(--text-tertiary)]">해당 조건의 종목이 없습니다.</p>
+                </div>
+              ) : (
+                <EmptyState type="no-data" />
+              )}
+            </div>
 
-        {/* 실전 기록 */}
-        <div className="pt-5">
-          <LiveLog logs={data.logs} />
-        </div>
+            <div className="h-1.5 bg-[var(--background)]" />
 
-        <div className="h-1.5 bg-[var(--background)]" />
+            <div className="pt-5">
+              <LiveLog logs={data.logs} />
+            </div>
 
-        {/* 뉴스 피드 */}
-        <div className="pt-5">
-          <NewsFeed />
-        </div>
+            <div className="h-1.5 bg-[var(--background)]" />
+
+            {/* 워크플로우 안내 (장 열림 시에도 하단에) */}
+            <div className="pt-5">
+              <WorkflowGuide />
+            </div>
+
+            <div className="h-1.5 bg-[var(--background)]" />
+
+            <div className="pt-5">
+              <NewsFeed />
+            </div>
+          </>
+        )}
 
         {/* Footer */}
         <footer className="px-5 pb-8 text-center">
           <p className="text-xs text-[var(--text-tertiary)]">
-            마지막 업데이트:{' '}
-            {new Date(data.lastUpdated).toLocaleTimeString('ko-KR')}
+            {relTime ? `${relTime} 업데이트` : new Date(data.lastUpdated).toLocaleTimeString('ko-KR')}
           </p>
           <p className="text-xs text-[var(--text-tertiary)] mt-1 opacity-50">
             AI Trading Dashboard v2.0
@@ -224,7 +313,6 @@ export default function DashboardPage() {
         </footer>
       </main>
 
-      {/* Detail Bottom Sheet */}
       <DetailSheet
         target={selectedTarget}
         onClose={() => setSelectedTarget(null)}
