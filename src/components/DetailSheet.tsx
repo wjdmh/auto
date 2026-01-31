@@ -56,20 +56,20 @@ export default function DetailSheet({ target, onClose }: Props) {
 
       {/* Sheet */}
       <div className="fixed bottom-0 left-0 right-0 z-50 max-w-[480px] mx-auto animate-slide-up">
-        <div className="bg-[var(--sheet-bg)] rounded-t-3xl px-6 pt-4 pb-8 max-h-[80vh] overflow-y-auto scrollbar-hide">
+        <div className="bg-[var(--sheet-bg)] rounded-t-3xl px-5 pt-4 pb-8 max-h-[80vh] overflow-y-auto scrollbar-hide">
           {/* Handle */}
-          <div className="w-10 h-1 rounded-full bg-[var(--text-tertiary)] mx-auto mb-6" />
+          <div className="w-10 h-1 rounded-full bg-[var(--text-tertiary)] mx-auto mb-5" />
 
           {/* Symbol Header */}
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-[var(--text-primary)]">{target.symbol}</h2>
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold text-[var(--text-primary)]">{target.symbol}</h2>
               {target.keyword && (
-                <span className="text-sm text-[var(--text-tertiary)]">#{target.keyword}</span>
+                <span className="text-[13px] text-[var(--text-tertiary)]">#{target.keyword}</span>
               )}
             </div>
             <span
-              className={`text-sm font-medium px-3 py-1.5 rounded-full ${
+              className={`text-[12px] font-medium px-3 py-1.5 rounded-full shrink-0 ${
                 isBought
                   ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
                   : 'bg-[var(--border)] text-[var(--text-tertiary)]'
@@ -81,8 +81,8 @@ export default function DetailSheet({ target, onClose }: Props) {
 
           {/* Mini Chart (당일 가격 흐름) */}
           {isBought && (
-            <div className="mb-6 bg-[var(--card-inner)] rounded-xl p-4 flex items-center justify-center">
-              <MiniChart symbol={target.symbol} width={280} height={60} />
+            <div className="mb-5 bg-[var(--card-inner)] rounded-xl p-3 flex items-center justify-center">
+              <MiniChart symbol={target.symbol} width={260} height={55} />
             </div>
           )}
 
@@ -104,11 +104,11 @@ export default function DetailSheet({ target, onClose }: Props) {
               <h3 className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
                 {isBought ? '매수 시점 기술지표' : '실시간 기술지표'}
               </h3>
-              <div className="bg-[var(--card-inner)] rounded-xl p-4 grid grid-cols-3 gap-3 text-center">
+              <div className="bg-[var(--card-inner)] rounded-xl p-4 grid grid-cols-3 gap-2 text-center">
                 {target.technical.rsi != null && (
                   <div>
-                    <p className="text-xs text-[var(--text-tertiary)] mb-1">RSI</p>
-                    <p className={`text-lg font-bold ${
+                    <p className="text-[11px] text-[var(--text-tertiary)] mb-1">RSI</p>
+                    <p className={`text-[15px] font-bold tabular-nums ${
                       target.technical.rsi < 40 ? 'text-[var(--profit)]' :
                       target.technical.rsi > 60 ? 'text-[var(--loss)]' :
                       'text-[var(--text-primary)]'
@@ -119,8 +119,8 @@ export default function DetailSheet({ target, onClose }: Props) {
                 )}
                 {target.technical.volRatio != null && (
                   <div>
-                    <p className="text-xs text-[var(--text-tertiary)] mb-1">거래량 배율</p>
-                    <p className={`text-lg font-bold ${
+                    <p className="text-[11px] text-[var(--text-tertiary)] mb-1">거래량 배율</p>
+                    <p className={`text-[15px] font-bold tabular-nums ${
                       target.technical.volRatio >= 1.5 ? 'text-amber-400' : 'text-[var(--text-primary)]'
                     }`}>
                       x{target.technical.volRatio.toFixed(2)}
@@ -129,8 +129,8 @@ export default function DetailSheet({ target, onClose }: Props) {
                 )}
                 {target.technical.volume != null && (
                   <div>
-                    <p className="text-xs text-[var(--text-tertiary)] mb-1">거래량</p>
-                    <p className="text-lg font-bold text-[var(--text-primary)]">
+                    <p className="text-[11px] text-[var(--text-tertiary)] mb-1">거래량</p>
+                    <p className="text-[15px] font-bold tabular-nums text-[var(--text-primary)]">
                       {target.technical.volume >= 1_000_000
                         ? `${(target.technical.volume / 1_000_000).toFixed(1)}M`
                         : target.technical.volume >= 1_000
@@ -149,20 +149,20 @@ export default function DetailSheet({ target, onClose }: Props) {
               <h3 className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
                 매매 정보
               </h3>
-              <div className="bg-[var(--card-inner)] rounded-xl p-4 space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-[var(--text-tertiary)]">진입 시각</span>
-                  <span className="text-sm text-[var(--text-primary)]">{target.trade.time} (ET)</span>
+              <div className="bg-[var(--card-inner)] rounded-xl p-4 space-y-2.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-[13px] text-[var(--text-tertiary)]">진입 시각</span>
+                  <span className="text-[13px] text-[var(--text-primary)] tabular-nums">{target.trade.time} (ET)</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-[var(--text-tertiary)]">진입가</span>
-                  <span className="text-sm text-[var(--text-primary)]">
+                <div className="flex justify-between items-center">
+                  <span className="text-[13px] text-[var(--text-tertiary)]">진입가</span>
+                  <span className="text-[13px] text-[var(--text-primary)] tabular-nums">
                     ${target.trade.price.toFixed(2)}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-[var(--text-tertiary)]">수량</span>
-                  <span className="text-sm text-[var(--text-primary)]">
+                <div className="flex justify-between items-center">
+                  <span className="text-[13px] text-[var(--text-tertiary)]">수량</span>
+                  <span className="text-[13px] text-[var(--text-primary)]">
                     {target.trade.quantity}주
                   </span>
                 </div>
@@ -176,24 +176,21 @@ export default function DetailSheet({ target, onClose }: Props) {
               <h3 className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
                 현재 포지션
               </h3>
-              <div className="bg-[var(--card-inner)] rounded-xl p-4 space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-[var(--text-tertiary)]">현재가</span>
-                  <span className="text-sm text-[var(--text-primary)]">
+              <div className="bg-[var(--card-inner)] rounded-xl p-4 space-y-2.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-[13px] text-[var(--text-tertiary)]">현재가</span>
+                  <span className="text-[13px] text-[var(--text-primary)] tabular-nums">
                     ${target.position.currentPrice.toFixed(2)}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-[var(--text-tertiary)]">평가손익</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-[13px] text-[var(--text-tertiary)]">평가손익</span>
                   <span
-                    className={`text-sm font-semibold ${
+                    className={`text-[13px] font-semibold tabular-nums ${
                       isProfit ? 'text-[var(--profit)]' : 'text-[var(--loss)]'
                     }`}
                   >
-                    {isProfit ? '+' : ''}$
-                    {target.position.unrealizedPL.toFixed(2)} (
-                    {isProfit ? '+' : ''}
-                    {target.position.unrealizedPLPercent.toFixed(2)}%)
+                    {isProfit ? '+' : ''}${target.position.unrealizedPL.toFixed(2)} ({isProfit ? '+' : ''}{target.position.unrealizedPLPercent.toFixed(2)}%)
                   </span>
                 </div>
               </div>

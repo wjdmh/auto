@@ -27,47 +27,53 @@ export default function LiveLog({ logs }: Props) {
           return (
             <div
               key={`${log.symbol}-${log.created_at}-${i}`}
-              className={`flex items-center gap-3 px-4 py-3 ${
+              className={`px-4 py-2.5 ${
                 i < logs.length - 1 ? 'border-b border-[var(--border)]' : ''
               }`}
             >
-              <span className="text-xs text-[var(--text-tertiary)] w-14 shrink-0">
-                {time}
-              </span>
-              <span
-                className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                  isBuy
-                    ? 'bg-[var(--accent)]/15 text-[var(--accent)]'
-                    : 'bg-[var(--loss)]/15 text-[var(--loss)]'
-                }`}
-              >
-                {isBuy ? '매수' : '매도'}
-              </span>
-              <span className="text-sm text-[var(--text-primary)] font-medium">
-                {log.symbol}
-              </span>
-              <span className="text-xs text-[var(--text-tertiary)]">
-                {log.quantity}주
-              </span>
-              <div className="ml-auto flex items-center gap-2">
-                {log.rsi != null && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                    log.rsi < 40 ? 'bg-[var(--profit)]/15 text-[var(--profit)]' :
-                    log.rsi > 60 ? 'bg-[var(--loss)]/15 text-[var(--loss)]' :
-                    'bg-[var(--border)] text-[var(--text-tertiary)]'
-                  }`}>
-                    RSI {log.rsi.toFixed(0)}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[11px] text-[var(--text-tertiary)] shrink-0 tabular-nums w-11">
+                    {time}
                   </span>
-                )}
-                {log.vol_ratio != null && log.vol_ratio >= 1.5 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-400">
-                    x{log.vol_ratio.toFixed(1)}
+                  <span
+                    className={`text-[11px] font-medium px-1.5 py-0.5 rounded shrink-0 ${
+                      isBuy
+                        ? 'bg-[var(--accent)]/15 text-[var(--accent)]'
+                        : 'bg-[var(--loss)]/15 text-[var(--loss)]'
+                    }`}
+                  >
+                    {isBuy ? '매수' : '매도'}
                   </span>
-                )}
-                <span className="text-sm text-[var(--text-secondary)]">
+                  <span className="text-[13px] text-[var(--text-primary)] font-medium shrink-0">
+                    {log.symbol}
+                  </span>
+                  <span className="text-[11px] text-[var(--text-tertiary)] shrink-0">
+                    {log.quantity}주
+                  </span>
+                </div>
+                <span className="text-[13px] text-[var(--text-secondary)] tabular-nums shrink-0">
                   ${Number(log.price).toFixed(2)}
                 </span>
               </div>
+              {(log.rsi != null || (log.vol_ratio != null && log.vol_ratio >= 1.5)) && (
+                <div className="flex items-center gap-1.5 mt-1 pl-11">
+                  {log.rsi != null && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      log.rsi < 40 ? 'bg-[var(--profit)]/15 text-[var(--profit)]' :
+                      log.rsi > 60 ? 'bg-[var(--loss)]/15 text-[var(--loss)]' :
+                      'bg-[var(--border)] text-[var(--text-tertiary)]'
+                    }`}>
+                      RSI {log.rsi.toFixed(0)}
+                    </span>
+                  )}
+                  {log.vol_ratio != null && log.vol_ratio >= 1.5 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-400">
+                      x{log.vol_ratio.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

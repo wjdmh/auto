@@ -93,25 +93,25 @@ export default function TargetCard({ target, onClick }: Props) {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2.5">
-          <span className="text-[17px] font-bold text-[var(--text-primary)]">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[16px] font-bold text-[var(--text-primary)] shrink-0">
             {target.symbol}
           </span>
           {target.keyword && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--border)] text-[var(--text-tertiary)]">
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--border)] text-[var(--text-tertiary)] truncate max-w-[120px]">
               #{target.keyword}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           {isAtRisk && (
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--loss)]/15 text-[var(--loss)]">
               손실
             </span>
           )}
           <span
-            className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+            className={`text-[11px] font-medium px-2 py-1 rounded-full ${
               isBought
                 ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
                 : 'bg-[var(--border)] text-[var(--text-tertiary)]'
@@ -123,25 +123,19 @@ export default function TargetCard({ target, onClick }: Props) {
       </div>
 
       {/* Storytelling */}
-      <div className="space-y-1.5">
-        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-          &quot;아침에{' '}
-          <strong className="text-[var(--text-primary)]">{target.reason || '시장 분석'}</strong>
-          으로 포착했어요.&quot;
+      <div className="space-y-1">
+        <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
+          &quot;아침에 <strong className="text-[var(--text-primary)]">{target.reason || '시장 분석'}</strong>으로 포착했어요.&quot;
         </p>
 
         {isBought && target.trade && (
-          <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-            &quot;{target.trade.time}에{' '}
-            <strong className="text-[var(--text-primary)]">
-              ${target.trade.price.toFixed(2)}
-            </strong>
-            에 {target.trade.quantity}주 진입했습니다.&quot;
+          <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
+            &quot;{target.trade.time}에 <strong className="text-[var(--text-primary)] tabular-nums">${target.trade.price.toFixed(2)}</strong>에 {target.trade.quantity}주 진입했습니다.&quot;
           </p>
         )}
 
         {!isBought && (
-          <p className="text-sm text-[var(--text-tertiary)] leading-relaxed">
+          <p className="text-[13px] text-[var(--text-tertiary)] leading-relaxed">
             &quot;아직 매수 타이밍이 오지 않았습니다.&quot;
           </p>
         )}
@@ -178,23 +172,23 @@ export default function TargetCard({ target, onClick }: Props) {
       {/* Position Info (Active only) */}
       {isBought && target.position && (
         <div className="mt-3 pt-3 border-t border-[var(--border)]">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-[var(--text-tertiary)] mb-0.5">현재가</p>
-              <p ref={priceRef} className="text-[15px] font-semibold text-[var(--text-primary)] rounded px-1 -mx-1 transition-colors">
+          <div className="flex items-center justify-between gap-1">
+            <div className="shrink-0">
+              <p className="text-[11px] text-[var(--text-tertiary)] mb-0.5">현재가</p>
+              <p ref={priceRef} className="text-[14px] font-semibold text-[var(--text-primary)] tabular-nums rounded px-1 -mx-1 transition-colors">
                 ${target.position.currentPrice.toFixed(2)}
               </p>
             </div>
 
             {/* Mini Chart */}
-            <div className="mx-2">
-              <MiniChart symbol={target.symbol} width={80} height={32} />
+            <div className="mx-1 shrink-0">
+              <MiniChart symbol={target.symbol} width={72} height={28} />
             </div>
 
-            <div className="text-right">
-              <p className="text-xs text-[var(--text-tertiary)] mb-0.5">수익률</p>
+            <div className="text-right shrink-0">
+              <p className="text-[11px] text-[var(--text-tertiary)] mb-0.5">수익률</p>
               <p
-                className={`text-[15px] font-semibold ${
+                className={`text-[14px] font-semibold tabular-nums ${
                   isProfit ? 'text-[var(--profit)]' : 'text-[var(--loss)]'
                 }`}
               >

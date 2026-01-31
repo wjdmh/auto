@@ -75,9 +75,9 @@ export default function WorkflowGuide() {
             </div>
 
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-[var(--accent)] font-mono">STEP {i + 1}</span>
-                <span className="text-sm font-semibold text-[var(--text-primary)]">{step.title}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-[var(--accent)] font-mono shrink-0">STEP {i + 1}</span>
+                <span className="text-[13px] font-semibold text-[var(--text-primary)]">{step.title}</span>
                 <svg
                   width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                   className={`ml-auto shrink-0 text-[var(--text-tertiary)] transition-transform duration-200 ${
@@ -87,7 +87,7 @@ export default function WorkflowGuide() {
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </div>
-              <p className="text-xs text-[var(--text-tertiary)] mt-1 leading-relaxed">{step.desc}</p>
+              <p className="text-[12px] text-[var(--text-tertiary)] mt-1 leading-relaxed">{step.desc}</p>
 
               {/* 상세 (아코디언) */}
               <div className={`overflow-hidden transition-all duration-200 ${

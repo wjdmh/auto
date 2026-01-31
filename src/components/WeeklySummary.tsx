@@ -48,33 +48,33 @@ export default function WeeklySummary() {
         최근 7일 요약
       </h2>
       <div className="bg-[var(--card)] rounded-2xl p-4">
-        <div className="grid grid-cols-3 gap-3 text-center mb-3">
+        <div className="grid grid-cols-3 gap-2 text-center mb-3">
           <div>
-            <p className="text-xs text-[var(--text-tertiary)] mb-1">총 수익</p>
-            <p className={`text-[15px] font-bold ${isProfit ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+            <p className="text-[11px] text-[var(--text-tertiary)] mb-1">총 수익</p>
+            <p className={`text-[14px] font-bold tabular-nums ${isProfit ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
               {isProfit ? '+' : ''}${data.totalPL.toFixed(2)}
             </p>
           </div>
           <div>
-            <p className="text-xs text-[var(--text-tertiary)] mb-1">총 매매</p>
-            <p className="text-[15px] font-bold text-[var(--text-primary)]">
+            <p className="text-[11px] text-[var(--text-tertiary)] mb-1">총 매매</p>
+            <p className="text-[14px] font-bold text-[var(--text-primary)]">
               {data.totalTrades}건
             </p>
           </div>
           <div>
-            <p className="text-xs text-[var(--text-tertiary)] mb-1">승률</p>
-            <p className={`text-[15px] font-bold ${data.winRate >= 50 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+            <p className="text-[11px] text-[var(--text-tertiary)] mb-1">승률</p>
+            <p className={`text-[14px] font-bold tabular-nums ${data.winRate >= 50 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
               {data.winRate.toFixed(0)}%
             </p>
           </div>
         </div>
         {(data.bestDay || data.worstDay) && (
-          <div className="pt-3 border-t border-[var(--border)] flex justify-between text-xs text-[var(--text-tertiary)]">
+          <div className="pt-3 border-t border-[var(--border)] flex justify-between text-[11px] text-[var(--text-tertiary)]">
             {data.bestDay && (
-              <span>최고일 <span className="text-[var(--profit)]">+${data.bestDay.pl.toFixed(2)}</span></span>
+              <span>최고일 <span className="text-[var(--profit)] tabular-nums">+${data.bestDay.pl.toFixed(2)}</span></span>
             )}
             {data.worstDay && data.worstDay.pl < 0 && (
-              <span>최악일 <span className="text-[var(--loss)]">${data.worstDay.pl.toFixed(2)}</span></span>
+              <span>최악일 <span className="text-[var(--loss)] tabular-nums">${data.worstDay.pl.toFixed(2)}</span></span>
             )}
           </div>
         )}

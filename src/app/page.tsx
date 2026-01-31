@@ -19,6 +19,7 @@ import NewsFeed from '@/components/NewsFeed';
 import DetailSheet from '@/components/DetailSheet';
 import ReviewMode from '@/components/ReviewMode';
 import WorkflowGuide from '@/components/WorkflowGuide';
+import MarketOpenGuide from '@/components/MarketOpenGuide';
 
 const REFRESH_INTERVAL = 15_000;
 
@@ -217,8 +218,12 @@ export default function DashboardPage() {
 
         {showReviewMode ? (
           /* ===== 복기 모드 ===== */
-          <div className="pt-5">
-            <ReviewMode />
+          <div className="pt-4">
+            <MarketOpenGuide />
+            <div className="h-1.5 bg-[var(--background)]" />
+            <div className="pt-4">
+              <ReviewMode />
+            </div>
           </div>
         ) : (
           /* ===== 실시간 모드 ===== */
@@ -239,15 +244,15 @@ export default function DashboardPage() {
 
             {/* 필터 탭 + 종목 리스트 */}
             <div>
-              <div className="px-5 flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-[var(--text-primary)]">
+              <div className="px-5 flex items-center justify-between mb-3">
+                <h2 className="text-[15px] font-bold text-[var(--text-primary)]">
                   정찰 &amp; 매매 스토리
                 </h2>
               </div>
 
               {/* 필터 탭 */}
               {data.targets.length > 0 && (
-                <div className="px-5 flex gap-2 mb-4">
+                <div className="px-5 flex gap-1.5 mb-3">
                   {([
                     { key: 'all' as FilterTab, label: '전체', count: data.targets.length },
                     { key: 'bought' as FilterTab, label: '보유중', count: boughtCount },
@@ -256,12 +261,12 @@ export default function DashboardPage() {
                     <button
                       key={key}
                       onClick={() => setFilterTab(key)}
-                      className={`text-xs px-3 py-1.5 rounded-full transition-colors ${filterTab === key
+                      className={`text-[12px] px-3 py-1.5 rounded-full transition-colors ${filterTab === key
                           ? 'bg-[var(--accent)] text-white'
                           : 'bg-[var(--card)] text-[var(--text-tertiary)]'
                         }`}
                     >
-                      {label} {count > 0 && <span className="ml-0.5 opacity-70">{count}</span>}
+                      {label}{count > 0 && <span className="ml-0.5 opacity-70">{count}</span>}
                     </button>
                   ))}
                 </div>
@@ -303,11 +308,11 @@ export default function DashboardPage() {
         )}
 
         {/* Footer */}
-        <footer className="px-5 pb-8 text-center">
-          <p className="text-xs text-[var(--text-tertiary)]">
+        <footer className="px-5 py-6 text-center">
+          <p className="text-[11px] text-[var(--text-tertiary)]">
             {relTime ? `${relTime} 업데이트` : new Date(data.lastUpdated).toLocaleTimeString('ko-KR')}
           </p>
-          <p className="text-xs text-[var(--text-tertiary)] mt-1 opacity-50">
+          <p className="text-[11px] text-[var(--text-tertiary)] mt-1 opacity-50">
             AI Trading Dashboard v2.0
           </p>
         </footer>
