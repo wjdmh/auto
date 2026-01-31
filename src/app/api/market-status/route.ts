@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const BASE_URL = process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets';
+const BASE_URL = (process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets').trim();
 const headers: HeadersInit = {
-  'APCA-API-KEY-ID': process.env.ALPACA_API_KEY || '',
-  'APCA-API-SECRET-KEY': process.env.ALPACA_SECRET_KEY || '',
+  'APCA-API-KEY-ID': (process.env.ALPACA_API_KEY || '').trim(),
+  'APCA-API-SECRET-KEY': (process.env.ALPACA_SECRET_KEY || '').trim(),
 };
 
 export async function GET() {
@@ -16,7 +16,10 @@ export async function GET() {
     });
 
     if (!res.ok) {
-      return NextResponse.json({ error: 'Clock fetch failed' }, { status: res.status });
+      console.error(`Alpaca Clock Error: ${res.status} ${res.statusText}`);
+      const text = await res.text();
+      console.error('Error Body:', text);
+      return NextResponse.json({ error: 'Clock fetch failed', details: text }, { status: res.status });
     }
 
     const clock = await res.json();
