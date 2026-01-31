@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef, useEffect } from 'react';
 import type { TargetStory } from '@/types';
 import MiniChart from './MiniChart';
 
@@ -38,6 +39,23 @@ function getSlTpAlert(
 export default function TargetCard({ target, onClick }: Props) {
   const isBought = target.status === 'BOUGHT';
   const isProfit = target.position ? target.position.unrealizedPL >= 0 : true;
+  const isAtRisk = isBought && target.position && target.position.unrealizedPL < 0;
+
+  // 가격 변동 하이라이트
+  const prevPrice = useRef(target.position?.currentPrice);
+  const priceRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!target.position || !priceRef.current) return;
+    const prev = prevPrice.current;
+    const curr = target.position.currentPrice;
+    if (prev != null && prev !== curr) {
+      const cls = curr > prev ? 'flash-profit' : 'flash-loss';
+      priceRef.current.classList.add(cls);
+      const t = setTimeout(() => priceRef.current?.classList.remove(cls), 600);
+      return () => clearTimeout(t);
+    }
+    prevPrice.current = curr;
+  }, [target.position?.currentPrice]);
 
   // SL/TP 근접 알림
   const alert =
@@ -86,15 +104,22 @@ export default function TargetCard({ target, onClick }: Props) {
             </span>
           )}
         </div>
-        <span
-          className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-            isBought
-              ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
-              : 'bg-[var(--border)] text-[var(--text-tertiary)]'
-          }`}
-        >
-          {isBought ? '보유중' : '조건 대기'}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {isAtRisk && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--loss)]/15 text-[var(--loss)]">
+              손실
+            </span>
+          )}
+          <span
+            className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+              isBought
+                ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
+                : 'bg-[var(--border)] text-[var(--text-tertiary)]'
+            }`}
+          >
+            {isBought ? '보유중' : '조건 대기'}
+          </span>
+        </div>
       </div>
 
       {/* Storytelling */}
@@ -156,7 +181,7 @@ export default function TargetCard({ target, onClick }: Props) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[var(--text-tertiary)] mb-0.5">현재가</p>
-              <p className="text-[15px] font-semibold text-[var(--text-primary)]">
+              <p ref={priceRef} className="text-[15px] font-semibold text-[var(--text-primary)] rounded px-1 -mx-1 transition-colors">
                 ${target.position.currentPrice.toFixed(2)}
               </p>
             </div>

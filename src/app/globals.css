@@ -88,6 +88,18 @@ body {
   display: none;
 }
 
+/* Price flash animation */
+@keyframes flash-profit {
+  0% { background-color: rgba(49, 130, 246, 0.25); }
+  100% { background-color: transparent; }
+}
+@keyframes flash-loss {
+  0% { background-color: rgba(240, 68, 82, 0.25); }
+  100% { background-color: transparent; }
+}
+.flash-profit { animation: flash-profit 0.6s ease-out; }
+.flash-loss { animation: flash-loss 0.6s ease-out; }
+
 /* Safe area for mobile */
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0);
