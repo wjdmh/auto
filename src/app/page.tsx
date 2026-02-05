@@ -1,327 +1,410 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { DashboardData, TargetStory } from '@/types';
-import SkeletonLoader from '@/components/SkeletonLoader';
-import EmptyState from '@/components/EmptyState';
-import InsightHeader from '@/components/InsightHeader';
-import SafetyBanner from '@/components/SafetyBanner';
-import SystemInfoBanner from '@/components/SystemInfoBanner';
-import MarketStatus from '@/components/MarketStatus';
-import DatePicker from '@/components/DatePicker';
-import WeeklySummary from '@/components/WeeklySummary';
-import PnLChart from '@/components/PnLChart';
-import WinRateStats from '@/components/WinRateStats';
-import ThemeCloud from '@/components/ThemeCloud';
-import MissionTimeline from '@/components/MissionTimeline';
-import LiveLog from '@/components/LiveLog';
-import NewsFeed from '@/components/NewsFeed';
-import DetailSheet from '@/components/DetailSheet';
-import ReviewMode from '@/components/ReviewMode';
-import WorkflowGuide from '@/components/WorkflowGuide';
-import MarketOpenGuide from '@/components/MarketOpenGuide';
+import { useState, useEffect, useCallback } from 'react';
+import type { DashboardData } from '@/types';
+import ThemeToggle from '@/components/ThemeToggle';
 
-const REFRESH_INTERVAL = 15_000;
-
-type FilterTab = 'all' | 'bought' | 'watching';
-
-/** 상대 시간 포맷 */
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const sec = Math.floor(diff / 1000);
-  if (sec < 10) return '방금';
-  if (sec < 60) return `${sec}초 전`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}분 전`;
-  const hr = Math.floor(min / 60);
-  return `${hr}시간 전`;
-}
-
-/** 위험도 기준 정렬 (손실 큰 종목 → SL근접 → 일반) */
-function sortByRisk(targets: TargetStory[]): TargetStory[] {
-  return [...targets].sort((a, b) => {
-    // 1순위: 매수 종목 먼저
-    if (a.status === 'BOUGHT' && b.status !== 'BOUGHT') return -1;
-    if (a.status !== 'BOUGHT' && b.status === 'BOUGHT') return 1;
-    // 2순위: 매수 종목 중 손실 큰 순서
-    const plA = a.position?.unrealizedPL ?? 0;
-    const plB = b.position?.unrealizedPL ?? 0;
-    if (a.status === 'BOUGHT' && b.status === 'BOUGHT') {
-      return plA - plB; // 손실이 큰 것이 먼저
-    }
-    return 0;
-  });
-}
+const REFRESH_INTERVAL = 30_000;
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedTarget, setSelectedTarget] = useState<TargetStory | null>(null);
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split('T')[0]
-  );
-  const [filterTab, setFilterTab] = useState<FilterTab>('all');
-  const [isMarketOpen, setIsMarketOpen] = useState<boolean | null>(null);
-  const [relTime, setRelTime] = useState('');
+  const [showHow, setShowHow] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
+  const [showZScore, setShowZScore] = useState(false);
 
-  // Pull-to-refresh
-  const mainRef = useRef<HTMLDivElement>(null);
-  const [pullDistance, setPullDistance] = useState(0);
-  const touchStartY = useRef(0);
-  const isPulling = useRef(false);
-
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
-
-  // 장 상태 조회
-  useEffect(() => {
-    async function checkMarket() {
-      try {
-        const res = await fetch('/api/market-status');
-        const json = await res.json();
-        setIsMarketOpen(json.isOpen);
-      } catch (err) {
-        console.error('Page Market Check Error:', err);
-        setIsMarketOpen(null);
-      }
-    }
-    checkMarket();
-    const t = setInterval(checkMarket, 60_000);
-    return () => clearInterval(t);
-  }, []);
-
-  const fetchData = useCallback(async (silent = false) => {
-    if (!silent) setRefreshing(true);
+  const fetchData = useCallback(async () => {
     try {
-      const url = isToday
-        ? '/api/dashboard'
-        : `/api/dashboard?date=${selectedDate}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('Failed to fetch');
-      const json: DashboardData = await res.json();
-      setData(json);
-      setError(null);
+      const res = await fetch('/api/dashboard');
+      if (!res.ok) throw new Error();
+      setData(await res.json());
     } catch {
-      setError('데이터를 불러오는 데 실패했습니다.');
+      // silent fail
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
-  }, [selectedDate, isToday]);
+  }, []);
 
   useEffect(() => {
-    setLoading(true);
     fetchData();
-    if (isToday) {
-      const interval = setInterval(() => fetchData(true), REFRESH_INTERVAL);
-      return () => clearInterval(interval);
-    }
-  }, [fetchData, isToday]);
-
-  // 상대 시간 업데이트
-  useEffect(() => {
-    if (!data) return;
-    setRelTime(relativeTime(data.lastUpdated));
-    const t = setInterval(() => setRelTime(relativeTime(data.lastUpdated)), 10_000);
+    const t = setInterval(fetchData, REFRESH_INTERVAL);
     return () => clearInterval(t);
-  }, [data?.lastUpdated]);
+  }, [fetchData]);
 
-  // 필터 + 위험도 정렬
-  const filteredTargets = useMemo(() => {
-    if (!data) return [];
-    let targets = data.targets;
-    if (filterTab === 'bought') targets = targets.filter((t) => t.status === 'BOUGHT');
-    else if (filterTab === 'watching') targets = targets.filter((t) => t.status === 'WATCHING');
-    return sortByRisk(targets);
-  }, [data, filterTab]);
-
-  // Pull-to-refresh handlers
-  function handleTouchStart(e: React.TouchEvent) {
-    if (mainRef.current && mainRef.current.scrollTop === 0) {
-      touchStartY.current = e.touches[0].clientY;
-      isPulling.current = true;
-    }
-  }
-  function handleTouchMove(e: React.TouchEvent) {
-    if (!isPulling.current) return;
-    const dy = e.touches[0].clientY - touchStartY.current;
-    if (dy > 0 && dy < 120) setPullDistance(dy);
-  }
-  function handleTouchEnd() {
-    if (pullDistance > 60) fetchData();
-    setPullDistance(0);
-    isPulling.current = false;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-base)] flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-[var(--text-muted)] border-t-[var(--text-strong)] rounded-full animate-spin" />
+      </div>
+    );
   }
 
-  if (loading) return <SkeletonLoader />;
-  if (error && !data) return <EmptyState type="error" message={error} onRetry={fetchData} />;
-  if (!data) return <EmptyState type="no-data" />;
-
-  // 장 마감 + 오늘 + 타겟 없음 → 복기 모드
-  const showReviewMode = isToday && isMarketOpen === false && data.targets.length === 0;
-
-  const boughtCount = data.targets.filter((t) => t.status === 'BOUGHT').length;
-  const watchingCount = data.targets.filter((t) => t.status === 'WATCHING').length;
-
-  return (
-    <div
-      ref={mainRef}
-      className="min-h-screen overflow-y-auto scrollbar-hide"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
-      {/* Pull-to-refresh indicator */}
-      {pullDistance > 0 && (
-        <div className="flex items-center justify-center transition-all" style={{ height: pullDistance }}>
-          <div className={`w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full ${pullDistance > 60 ? 'animate-spin' : ''
-            }`} style={{ transform: `rotate(${pullDistance * 3}deg)` }} />
-        </div>
-      )}
-
-      {/* Refreshing indicator */}
-      {refreshing && !loading && (
-        <div className="fixed top-0 left-0 right-0 z-30 max-w-[480px] mx-auto">
-          <div className="h-0.5 bg-[var(--accent)] animate-pulse" />
-        </div>
-      )}
-
-      <main className="pb-safe">
-        <InsightHeader data={data} />
-        <SystemInfoBanner />
-        <SafetyBanner safety={data.safety} />
-        <MarketStatus />
-
-        {/* 날짜 선택 + 상대 시간 + 새로고침 */}
-        <div className="flex items-center gap-2 px-5 pb-2">
-          <div className="flex-1">
-            <DatePicker selectedDate={selectedDate} onChange={setSelectedDate} />
-          </div>
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-base)] flex items-center justify-center px-6">
+        <div className="text-center">
+          <p className="text-[var(--text-subtle)] mb-4">연결할 수 없어요</p>
           <button
-            onClick={() => fetchData()}
-            disabled={refreshing}
-            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--card)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors disabled:opacity-50"
-            aria-label="새로고침"
+            onClick={fetchData}
+            className="px-5 py-2.5 rounded-lg bg-[var(--blue)] text-white text-[14px] font-medium"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? 'animate-spin' : ''}>
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
-            </svg>
+            다시 시도
           </button>
         </div>
-        {relTime && (
-          <p className="px-5 pb-4 text-[11px] text-[var(--text-tertiary)]">{relTime} 업데이트</p>
+      </div>
+    );
+  }
+
+  const { account, holding, lastDecision, market, history } = data;
+  const isPositive = account.todayPL >= 0;
+
+  const holdingText = holding.status === 'CASH' ? '현금' : holding.status;
+  const holdingColor = holding.status === 'NVDA' ? '#76B900' : holding.status === 'AMD' ? '#ED1C24' : 'var(--text-subtle)';
+
+  const position = holding.position;
+  const unrealizedPL = position ? parseFloat(position.unrealized_pl) : 0;
+  const unrealizedPLPC = position ? parseFloat(position.unrealized_plpc) * 100 : 0;
+  const positionIsPositive = unrealizedPL >= 0;
+
+  return (
+    <div className="min-h-screen bg-[var(--bg-base)] pb-safe">
+      {/* Header */}
+      <header className="flex items-center justify-between px-5 py-4">
+        <span className="text-[var(--text-muted)] text-[13px]">자동매매</span>
+        <ThemeToggle />
+      </header>
+
+      {/* 시스템 안내 */}
+      <section className="px-5 pb-5 animate-in">
+        <div className="p-4 rounded-2xl bg-[var(--bg-surface)]">
+          <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">
+            가상 계좌로 투자 중이에요.<br />
+            매일 아침 <strong className="text-[var(--text-strong)]">5시 40분</strong>에 자동으로 판단하고 매매해요.
+          </p>
+
+          {/* 왜 5시 40분? 버튼 */}
+          <button
+            onClick={() => setShowWhy(!showWhy)}
+            className="mt-3 flex items-center gap-1.5 text-[var(--blue)] text-[13px] font-medium active:opacity-70 transition-opacity"
+          >
+            <span>왜 5시 40분인가요?</span>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={`transition-transform ${showWhy ? 'rotate-180' : ''}`}
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+
+          {showWhy && (
+            <p className="mt-2 text-[var(--text-subtle)] text-[13px] leading-relaxed">
+              미국 증시 마감 직전이에요. 하루 동안의 시장 움직임을 모두 반영한 시점에서 판단해요.
+            </p>
+          )}
+        </div>
+
+        {/* 어떻게 작동하나요? 버튼 */}
+        <button
+          onClick={() => setShowHow(!showHow)}
+          className="w-full mt-3 p-4 rounded-2xl bg-[var(--bg-surface)] flex items-center justify-between active:bg-[var(--divider)] transition-colors"
+        >
+          <span className="text-[var(--text-normal)] text-[14px]">어떻게 작동하나요?</span>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--text-muted)"
+            strokeWidth="2"
+            className={`transition-transform ${showHow ? 'rotate-180' : ''}`}
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+
+        {showHow && (
+          <div className="mt-3 rounded-2xl bg-[var(--bg-surface)] overflow-hidden">
+            {/* Step 1: 시장 필터 */}
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="w-6 h-6 rounded-full bg-[var(--blue)] text-white flex items-center justify-center text-[12px] font-semibold">1</span>
+                <p className="text-[var(--text-strong)] font-semibold text-[15px]">시장이 괜찮은지 확인해요</p>
+              </div>
+              <p className="text-[var(--text-normal)] text-[14px] leading-relaxed mb-4 pl-9">
+                미국 전체 시장(SPY)이 최근 200일 평균보다 아래면 위험 신호예요.
+              </p>
+              <div className="pl-9 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)]" />
+                  <span className="text-[var(--text-subtle)] text-[13px]">위험 → 전부 팔고 현금 대피</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--green)]" />
+                  <span className="text-[var(--text-subtle)] text-[13px]">안전 → 다음 단계로</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-[1px] bg-[var(--divider)] mx-5" />
+
+            {/* Step 2: 종목 선택 */}
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="w-6 h-6 rounded-full bg-[var(--blue)] text-white flex items-center justify-center text-[12px] font-semibold">2</span>
+                <p className="text-[var(--text-strong)] font-semibold text-[15px]">NVDA와 AMD 중 고르기</p>
+              </div>
+              <p className="text-[var(--text-normal)] text-[14px] leading-relaxed mb-4 pl-9">
+                둘 다 AI 반도체 회사라 비슷하게 움직여요. Z-Score로 어느 쪽이 저평가인지 판단해요.
+              </p>
+              <div className="pl-9 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-[#ED1C24] bg-[rgba(237,28,36,0.1)] px-1.5 py-0.5 rounded">+1↑</span>
+                  <span className="text-[var(--text-subtle)] text-[13px]">NVDA가 비싸요 → AMD 매수</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-[#76B900] bg-[rgba(118,185,0,0.1)] px-1.5 py-0.5 rounded">-1↓</span>
+                  <span className="text-[var(--text-subtle)] text-[13px]">AMD가 비싸요 → NVDA 매수</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-[var(--text-muted)] bg-[var(--divider)] px-1.5 py-0.5 rounded">±1</span>
+                  <span className="text-[var(--text-subtle)] text-[13px]">정상 범위 → 유지</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-[1px] bg-[var(--divider)] mx-5" />
+
+            {/* 왜 이 전략인가 */}
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="w-6 h-6 rounded-full bg-[var(--blue-light)] text-[var(--blue)] flex items-center justify-center text-[12px] font-semibold">?</span>
+                <p className="text-[var(--text-strong)] font-semibold text-[15px]">왜 이 전략인가요?</p>
+              </div>
+              <div className="pl-9 space-y-2 text-[13px] text-[var(--text-subtle)] leading-relaxed">
+                <p><strong className="text-[var(--text-normal)]">AI 핵심에 투자</strong> — GPU는 NVDA와 AMD가 만들어요</p>
+                <p><strong className="text-[var(--text-normal)]">자동 대피</strong> — 하락장엔 현금으로 피해요</p>
+                <p><strong className="text-[var(--text-normal)]">순환매 포착</strong> — 둘이 번갈아 오를 때 수익 내요</p>
+              </div>
+            </div>
+
+            {/* 하단 닫기 버튼 */}
+            <button
+              onClick={() => setShowHow(false)}
+              className="w-full py-4 text-[var(--blue)] text-[14px] font-medium border-t border-[var(--divider)] active:bg-[var(--divider-light)] transition-colors"
+            >
+              닫기
+            </button>
+          </div>
         )}
+      </section>
 
-        <div className="h-1.5 bg-[var(--background)]" />
+      {/* 구분선 */}
+      <div className="h-[1px] bg-[var(--divider)]" />
 
-        {showReviewMode ? (
-          /* ===== 복기 모드 ===== */
-          <div className="pt-4">
-            <MarketOpenGuide />
-            <div className="h-1.5 bg-[var(--background)]" />
-            <div className="pt-4">
-              <ReviewMode />
+      {/* 자산 섹션 */}
+      <section className="px-5 py-6 animate-in" style={{ animationDelay: '50ms' }}>
+        <p className="text-[var(--text-muted)] text-[12px] mb-1">내 투자</p>
+        <p className="text-display text-[var(--text-strong)]">
+          ${account.equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        </p>
+        <div className="flex items-center gap-2 mt-2">
+          <span className={`text-[15px] font-medium ${isPositive ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
+            {isPositive ? '+' : ''}{account.todayPLPercent.toFixed(2)}%
+          </span>
+          <span className="text-[var(--text-subtle)] text-[14px]">
+            {isPositive ? '+' : ''}${Math.abs(account.todayPL).toFixed(2)} 오늘
+          </span>
+        </div>
+      </section>
+
+      <div className="h-[1px] bg-[var(--divider)]" />
+
+      {/* 보유 종목 */}
+      <section className="px-5 py-5 animate-in" style={{ animationDelay: '100ms' }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[var(--text-muted)] text-[12px] mb-1">보유 중</p>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: holdingColor }} />
+              <span className="text-title text-[var(--text-strong)]">{holdingText}</span>
             </div>
           </div>
-        ) : (
-          /* ===== 실시간 모드 ===== */
-          <>
-            {/* 주간 요약 */}
-            <div className="pt-5">
-              <WeeklySummary />
+          {position && holding.status !== 'CASH' && (
+            <div className="text-right">
+              <p className={`text-title ${positionIsPositive ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
+                {positionIsPositive ? '+' : ''}{unrealizedPLPC.toFixed(2)}%
+              </p>
+              <p className="text-[var(--text-muted)] text-[12px] mt-0.5">
+                {positionIsPositive ? '+' : ''}${unrealizedPL.toFixed(2)}
+              </p>
             </div>
+          )}
+        </div>
 
-            <PnLChart />
-            <WinRateStats />
-
-            <div className="h-1.5 bg-[var(--background)]" />
-
-            <div className="pt-5">
-              <ThemeCloud targets={data.targets} />
-            </div>
-
-            {/* 필터 탭 + 종목 리스트 */}
+        {position && holding.status !== 'CASH' && (
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-[var(--divider-light)]">
             <div>
-              <div className="px-5 flex items-center justify-between mb-3">
-                <h2 className="text-[15px] font-bold text-[var(--text-primary)]">
-                  정찰 &amp; 매매 스토리
-                </h2>
-              </div>
-
-              {/* 필터 탭 */}
-              {data.targets.length > 0 && (
-                <div className="px-5 flex gap-1.5 mb-3">
-                  {([
-                    { key: 'all' as FilterTab, label: '전체', count: data.targets.length },
-                    { key: 'bought' as FilterTab, label: '보유중', count: boughtCount },
-                    { key: 'watching' as FilterTab, label: '대기', count: watchingCount },
-                  ]).map(({ key, label, count }) => (
-                    <button
-                      key={key}
-                      onClick={() => setFilterTab(key)}
-                      className={`text-[12px] px-3 py-1.5 rounded-full transition-colors ${filterTab === key
-                          ? 'bg-[var(--accent)] text-white'
-                          : 'bg-[var(--card)] text-[var(--text-tertiary)]'
-                        }`}
-                    >
-                      {label}{count > 0 && <span className="ml-0.5 opacity-70">{count}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {filteredTargets.length > 0 ? (
-                <MissionTimeline
-                  targets={filteredTargets}
-                  onSelectTarget={setSelectedTarget}
-                />
-              ) : data.targets.length > 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-sm text-[var(--text-tertiary)]">해당 조건의 종목이 없습니다.</p>
-                </div>
-              ) : (
-                <EmptyState type="no-data" />
-              )}
+              <p className="text-[var(--text-muted)] text-[11px]">수량</p>
+              <p className="text-[var(--text-normal)] text-[14px] mt-0.5">{parseFloat(position.qty).toFixed(0)}주</p>
             </div>
-
-            <div className="h-1.5 bg-[var(--background)]" />
-
-            <div className="pt-5">
-              <LiveLog logs={data.logs} />
+            <div>
+              <p className="text-[var(--text-muted)] text-[11px]">평균 단가</p>
+              <p className="text-[var(--text-normal)] text-[14px] mt-0.5">${parseFloat(position.avg_entry_price).toFixed(2)}</p>
             </div>
-
-            <div className="h-1.5 bg-[var(--background)]" />
-
-            {/* 워크플로우 안내 (장 열림 시에도 하단에) */}
-            <div className="pt-5">
-              <WorkflowGuide />
+            <div>
+              <p className="text-[var(--text-muted)] text-[11px]">현재가</p>
+              <p className="text-[var(--text-normal)] text-[14px] mt-0.5">${parseFloat(position.current_price).toFixed(2)}</p>
             </div>
-
-            <div className="h-1.5 bg-[var(--background)]" />
-
-            <div className="pt-5">
-              <NewsFeed />
-            </div>
-          </>
+          </div>
         )}
 
-        {/* Footer */}
-        <footer className="px-5 py-6 text-center">
-          <p className="text-[11px] text-[var(--text-tertiary)]">
-            {relTime ? `${relTime} 업데이트` : new Date(data.lastUpdated).toLocaleTimeString('ko-KR')}
-          </p>
-          <p className="text-[11px] text-[var(--text-tertiary)] mt-1 opacity-50">
-            AI Trading Dashboard v2.0
-          </p>
-        </footer>
-      </main>
+        {holding.status === 'CASH' && (
+          <p className="text-[var(--text-subtle)] text-[13px] mt-2">시장 상황을 지켜보고 있어요</p>
+        )}
+      </section>
 
-      <DetailSheet
-        target={selectedTarget}
-        onClose={() => setSelectedTarget(null)}
-      />
+      <div className="h-2 bg-[var(--bg-surface)]" />
+
+      {/* 실시간 분석 */}
+      {market && (
+        <section className="px-5 py-5 animate-in" style={{ animationDelay: '150ms' }}>
+          <p className="text-[var(--text-muted)] text-[12px] mb-4">실시간 분석</p>
+
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[var(--text-subtle)] text-[14px]">Z-Score</span>
+            <span className="text-title text-[var(--text-strong)]">
+              {market.zScore > 0 ? '+' : ''}{market.zScore.toFixed(2)}
+            </span>
+          </div>
+
+          {/* Z-Score 설명 버튼 */}
+          <button
+            onClick={() => setShowZScore(!showZScore)}
+            className="mb-4 flex items-center gap-1 text-[var(--blue)] text-[13px] font-medium active:opacity-70 transition-opacity"
+          >
+            <span>Z-Score가 무엇인가요?</span>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={`transition-transform ${showZScore ? 'rotate-180' : ''}`}
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+
+          {showZScore && (
+            <div className="mb-4 p-4 rounded-xl bg-[var(--bg-surface)] text-[14px] leading-relaxed">
+              <p className="text-[var(--text-normal)] mb-3">
+                <strong className="text-[var(--text-strong)]">Z-Score</strong>는 NVDA와 AMD의 가격 비율이 평소와 얼마나 다른지 보여주는 숫자예요.
+              </p>
+              <p className="text-[var(--text-subtle)] mb-3">
+                두 회사는 같은 AI 반도체 업종이라 보통 비슷하게 움직여요. 그런데 가끔 한쪽이 너무 올랐거나 너무 떨어질 때가 있어요.
+              </p>
+              <div className="space-y-2 mt-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] font-bold text-[#ED1C24] bg-[rgba(237,28,36,0.1)] px-2 py-0.5 rounded">+1.0 이상</span>
+                  <span className="text-[var(--text-subtle)] text-[13px]">NVDA가 비싸요 → AMD 매수</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] font-bold text-[#76B900] bg-[rgba(118,185,0,0.1)] px-2 py-0.5 rounded">-1.0 이하</span>
+                  <span className="text-[var(--text-subtle)] text-[13px]">AMD가 비싸요 → NVDA 매수</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] font-bold text-[var(--text-muted)] bg-[var(--divider)] px-2 py-0.5 rounded">-1 ~ +1</span>
+                  <span className="text-[var(--text-subtle)] text-[13px]">정상 범위 → 유지</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="relative h-1.5 bg-[var(--bg-surface)] rounded-full mb-2">
+            <div
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-[var(--text-strong)] transition-all duration-500"
+              style={{ left: `calc(${Math.max(0, Math.min(100, ((market.zScore + 2) / 4) * 100))}% - 6px)` }}
+            />
+          </div>
+          <div className="flex justify-between text-[11px] text-[var(--text-muted)]">
+            <span>NVDA 저평가</span>
+            <span>AMD 저평가</span>
+          </div>
+
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-[var(--divider-light)]">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#76B900]" />
+              <span className="text-[var(--text-subtle)] text-[12px]">NVDA</span>
+              <span className="text-[var(--text-normal)] text-[14px] font-medium">${market.nvdaPrice.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[var(--text-normal)] text-[14px] font-medium">${market.amdPrice.toFixed(2)}</span>
+              <span className="text-[var(--text-subtle)] text-[12px]">AMD</span>
+              <span className="w-2 h-2 rounded-full bg-[#ED1C24]" />
+            </div>
+          </div>
+        </section>
+      )}
+
+      <div className="h-2 bg-[var(--bg-surface)]" />
+
+      {/* 최근 판단 */}
+      {lastDecision && (
+        <section className="px-5 py-5 animate-in" style={{ animationDelay: '200ms' }}>
+          <p className="text-[var(--text-muted)] text-[12px] mb-2">최근 판단</p>
+          <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{lastDecision.memo}</p>
+          <p className="text-[var(--text-muted)] text-[11px] mt-2">
+            {new Date(lastDecision.timestamp).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+            {' '}
+            {new Date(lastDecision.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+          </p>
+        </section>
+      )}
+
+      <div className="h-2 bg-[var(--bg-surface)]" />
+
+      {/* 기록 */}
+      {history.length > 0 && (
+        <section className="px-5 py-5 animate-in" style={{ animationDelay: '250ms' }}>
+          <p className="text-[var(--text-muted)] text-[12px] mb-3">기록</p>
+          {history.slice(0, 5).map((record, i) => {
+            const actionLabel =
+              record.action_taken === 'BUY_NVDA' ? 'NVDA 매수' :
+              record.action_taken === 'BUY_AMD' ? 'AMD 매수' :
+              record.action_taken === 'SELL_ALL' ? '전량 매도' : '유지';
+            const actionColor =
+              record.action_taken === 'BUY_NVDA' ? '#76B900' :
+              record.action_taken === 'BUY_AMD' ? '#ED1C24' :
+              'var(--text-subtle)';
+
+            return (
+              <div
+                key={record.id}
+                className={`flex items-center justify-between py-3 ${i !== history.slice(0, 5).length - 1 ? 'border-b border-[var(--divider-light)]' : ''}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: actionColor }} />
+                  <span className="text-[var(--text-normal)] text-[13px]">{actionLabel}</span>
+                </div>
+                <span className="text-[var(--text-muted)] text-[11px]">
+                  {new Date(record.timestamp).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                </span>
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {/* Footer */}
+      <footer className="px-5 py-8 text-center">
+        <p className="text-[11px] text-[var(--text-muted)]">Alpaca Paper Trading · n8n 자동화</p>
+      </footer>
     </div>
   );
 }

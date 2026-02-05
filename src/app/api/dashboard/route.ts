@@ -1,156 +1,114 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { getAccount, getPositions, getOrders, getMultiBars, computeRSI, computeVolRatio } from '@/lib/alpaca';
-import { translateToKorean } from '@/lib/translate';
-import type { DailyTarget, TradeLog, TargetStory, DashboardData, SafetyStatus, TechnicalData } from '@/types';
+import { getAccount, getPositions } from '@/lib/alpaca';
+import type { TradeLog, DashboardData, MarketData } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
-const PROFIT_LIMIT = 100;
-const LOSS_LIMIT = -30;
-
-export async function GET(request: Request) {
+// Yahoo Finance에서 가격 데이터 가져오기
+async function fetchPriceData(symbol: string): Promise<number[]> {
   try {
-    const { searchParams } = new URL(request.url);
-    const dateParam = searchParams.get('date');
-    const isToday = !dateParam || dateParam === new Date().toISOString().split('T')[0];
-    const dateSQL = isToday ? 'CURRENT_DATE' : `'${dateParam}'::date`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1y`;
+    const res = await fetch(url, { next: { revalidate: 300 } });
+    const data = await res.json();
+    const quotes = data.chart.result[0].indicators.quote[0].close;
+    return quotes.filter((q: number | null) => q !== null);
+  } catch {
+    return [];
+  }
+}
 
-    // 1. DB: daily_targets (status=ACTIVE 필터)
-    const targets = await query<DailyTarget>(
-      `SELECT * FROM daily_targets WHERE date = ${dateSQL} AND status = 'ACTIVE' ORDER BY created_at DESC`
+// SMA 계산
+function calculateSMA(data: number[], period: number): number {
+  if (data.length < period) return 0;
+  const slice = data.slice(-period);
+  return slice.reduce((a, b) => a + b, 0) / period;
+}
+
+// 표준편차 계산
+function calculateStd(data: number[], period: number): number {
+  if (data.length < period) return 0;
+  const mean = calculateSMA(data, period);
+  const slice = data.slice(-period);
+  const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period;
+  return Math.sqrt(variance);
+}
+
+// 실시간 시장 데이터 계산
+async function getMarketData(): Promise<MarketData | null> {
+  try {
+    const [spyPrices, nvdaPrices, amdPrices] = await Promise.all([
+      fetchPriceData('SPY'),
+      fetchPriceData('NVDA'),
+      fetchPriceData('AMD'),
+    ]);
+
+    if (!spyPrices.length || !nvdaPrices.length || !amdPrices.length) {
+      return null;
+    }
+
+    const spyPrice = spyPrices[spyPrices.length - 1];
+    const spy200MA = calculateSMA(spyPrices, 200);
+    const nvdaPrice = nvdaPrices[nvdaPrices.length - 1];
+    const amdPrice = amdPrices[amdPrices.length - 1];
+
+    // NVDA/AMD 비율 계산
+    const minLen = Math.min(nvdaPrices.length, amdPrices.length);
+    const nvdaSlice = nvdaPrices.slice(-minLen);
+    const amdSlice = amdPrices.slice(-minLen);
+    const ratios = nvdaSlice.map((n, i) => n / amdSlice[i]);
+
+    const ratio = ratios[ratios.length - 1];
+    const ratioMean = calculateSMA(ratios, 20);
+    const ratioStd = calculateStd(ratios, 20);
+    const zScore = ratioStd !== 0 ? (ratio - ratioMean) / ratioStd : 0;
+
+    return {
+      spyPrice,
+      spy200MA,
+      nvdaPrice,
+      amdPrice,
+      zScore,
+      ratio,
+      ratioMean,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function GET() {
+  try {
+    // 1. DB에서 최근 기록 조회
+    const history = await query<TradeLog>(
+      `SELECT * FROM trade_log ORDER BY id DESC LIMIT 20`
     );
 
-    // 2. DB: trade_log (vol_ratio, volume, rsi 포함)
-    const trades = await query<TradeLog>(
-      `SELECT * FROM trade_log WHERE date = ${dateSQL} ORDER BY created_at DESC`
-    );
+    // 2. 가장 최근 판단 (INIT 제외)
+    const lastDecision = history.find(h => h.action_taken !== 'INIT') || null;
 
-    // 3. Alpaca API (오늘만)
-    const [account, positions, orders] = isToday
-      ? await Promise.all([
-          getAccount().catch(() => null),
-          getPositions().catch(() => []),
-          getOrders().catch(() => []),
-        ])
-      : [null, [], []];
+    // 3. 현재 보유 상태 (가장 최근 레코드 기준)
+    const currentHolding = history[0]?.current_holding || 'CASH';
 
-    // 4. Symbol 기준 병합
-    const tradeMap = new Map<string, TradeLog>();
-    for (const trade of trades) {
-      if (trade.action === 'BUY') {
-        tradeMap.set(trade.symbol, trade);
-      }
-    }
+    // 4. Alpaca 계좌 정보
+    const [account, positions] = await Promise.all([
+      getAccount().catch(() => null),
+      getPositions().catch(() => []),
+    ]);
 
-    const positionMap = new Map<string, typeof positions extends (infer T)[] ? T : never>();
-    for (const pos of positions) {
-      positionMap.set(pos.symbol, pos);
-    }
+    // 5. 현재 포지션 찾기
+    const holdingPosition = positions.find(
+      (p) => p.symbol === currentHolding
+    ) || null;
 
-    const orderMap = new Map<string, { takeProfit: number | null; stopLoss: number | null }>();
-    for (const order of orders) {
-      if (order.legs && order.legs.length > 0) {
-        let tp: number | null = null;
-        let sl: number | null = null;
-        for (const leg of order.legs) {
-          if (leg.type === 'limit' && leg.limit_price) tp = parseFloat(leg.limit_price);
-          if (leg.type === 'stop' && leg.stop_price) sl = parseFloat(leg.stop_price);
-        }
-        orderMap.set(order.symbol, { takeProfit: tp, stopLoss: sl });
-      }
-    }
+    // 6. 실시간 시장 데이터
+    const market = await getMarketData();
 
-    // 5. WATCHING 종목의 실시간 기술지표 계산
-    const watchingSymbols = targets
-      .filter((t) => !tradeMap.has(t.symbol))
-      .map((t) => t.symbol);
-
-    let liveTechnicals = new Map<string, TechnicalData>();
-    if (isToday && watchingSymbols.length > 0) {
-      try {
-        const barsMap = await getMultiBars(watchingSymbols);
-        for (const [symbol, bars] of barsMap) {
-          const rsi = computeRSI(bars);
-          const volRatio = computeVolRatio(bars);
-          const latestVol = bars.length > 0 ? bars[bars.length - 1].v : null;
-          liveTechnicals.set(symbol, { rsi, volRatio, volume: latestVol });
-        }
-      } catch {
-        // 실시간 기술지표 실패 시 무시
-      }
-    }
-
-    // 6. 번역
-    const textsToTranslate = targets.flatMap((t) => [t.reason, t.keyword].filter(Boolean));
-    const translations = await translateToKorean(textsToTranslate);
-
-    // 7. Full Story Objects
-    const targetStories: TargetStory[] = targets.map((target) => {
-      const trade = tradeMap.get(target.symbol);
-      const position = positionMap.get(target.symbol);
-      const orderInfo = orderMap.get(target.symbol);
-      const isBought = !!trade;
-
-      // 기술지표: 매수 종목은 trade_log에서, 대기 종목은 실시간 계산
-      let technical: TechnicalData | null = null;
-      if (trade) {
-        technical = {
-          rsi: trade.rsi != null ? Number(trade.rsi) : null,
-          volRatio: trade.vol_ratio != null ? Number(trade.vol_ratio) : null,
-          volume: trade.volume != null ? Number(trade.volume) : null,
-        };
-      } else if (liveTechnicals.has(target.symbol)) {
-        technical = liveTechnicals.get(target.symbol)!;
-      }
-
-      return {
-        symbol: target.symbol,
-        keyword: translations.get(target.keyword) || target.keyword || '',
-        reason: translations.get(target.reason) || target.reason || '',
-        status: isBought ? 'BOUGHT' : 'WATCHING',
-        trade: trade
-          ? {
-              price: Number(trade.price),
-              quantity: Number(trade.quantity),
-              time: new Date(trade.created_at).toLocaleTimeString('ko-KR', {
-                hour: '2-digit',
-                minute: '2-digit',
-                timeZone: 'America/New_York',
-              }),
-            }
-          : null,
-        order: orderInfo || null,
-        position: position
-          ? {
-              currentPrice: parseFloat(position.current_price),
-              unrealizedPL: parseFloat(position.unrealized_pl),
-              unrealizedPLPercent: parseFloat(position.unrealized_plpc) * 100,
-            }
-          : null,
-        technical,
-      };
-    });
-
-    targetStories.sort((a, b) => {
-      if (a.status === 'BOUGHT' && b.status !== 'BOUGHT') return -1;
-      if (a.status !== 'BOUGHT' && b.status === 'BOUGHT') return 1;
-      return 0;
-    });
-
+    // 7. 계좌 정보 계산
     const equity = account ? parseFloat(account.equity) : 0;
     const lastEquity = account ? parseFloat(account.last_equity) : 0;
     const todayPL = equity - lastEquity;
     const todayPLPercent = lastEquity > 0 ? (todayPL / lastEquity) * 100 : 0;
-
-    // 8. 안전 차단기 상태
-    const safety: SafetyStatus = {
-      isTriggered: todayPL > PROFIT_LIMIT || todayPL < LOSS_LIMIT,
-      type: todayPL > PROFIT_LIMIT ? 'profit_cap' : todayPL < LOSS_LIMIT ? 'loss_cap' : null,
-      todayPL,
-      profitLimit: PROFIT_LIMIT,
-      lossLimit: LOSS_LIMIT,
-    };
 
     const data: DashboardData = {
       account: {
@@ -159,14 +117,13 @@ export async function GET(request: Request) {
         todayPL,
         todayPLPercent,
       },
-      summary: {
-        totalTargets: targets.length,
-        totalBought: targetStories.filter((t) => t.status === 'BOUGHT').length,
-        totalSkipped: targetStories.filter((t) => t.status === 'WATCHING').length,
+      holding: {
+        status: currentHolding as 'NVDA' | 'AMD' | 'CASH',
+        position: holdingPosition,
       },
-      safety,
-      targets: targetStories,
-      logs: trades,
+      lastDecision,
+      market,
+      history: history.filter(h => h.action_taken !== 'INIT'),
       lastUpdated: new Date().toISOString(),
     };
 
