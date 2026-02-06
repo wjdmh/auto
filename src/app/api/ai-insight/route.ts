@@ -7,6 +7,17 @@ export const dynamic = 'force-dynamic';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
+interface AIInsightRow {
+  id: number;
+  date: string;
+  summary: string;
+  strategy: string;
+  reason: string;
+  decision: string;
+  direction: string;
+  created_at: string;
+}
+
 interface GeminiResponse {
   candidates: Array<{
     content: {
@@ -15,6 +26,36 @@ interface GeminiResponse {
       }>;
     };
   }>;
+}
+
+// 테이블 생성 (없으면)
+async function ensureTable() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS ai_insights (
+      id SERIAL PRIMARY KEY,
+      date DATE UNIQUE NOT NULL,
+      summary TEXT,
+      strategy TEXT,
+      reason TEXT,
+      decision TEXT,
+      direction TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+}
+
+// 오늘 날짜 (KST 기준, 6시 이전이면 어제)
+function getTodayDateKST(): string {
+  const now = new Date();
+  const kstOffset = 9 * 60 * 60 * 1000;
+  const kstNow = new Date(now.getTime() + kstOffset);
+
+  // 6시 이전이면 어제 날짜
+  if (kstNow.getHours() < 6) {
+    kstNow.setDate(kstNow.getDate() - 1);
+  }
+
+  return kstNow.toISOString().split('T')[0];
 }
 
 // Yahoo Finance에서 가격 데이터 가져오기
@@ -58,7 +99,7 @@ async function callGemini(prompt: string): Promise<string> {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 500,
+          maxOutputTokens: 800,
         },
       }),
     }
@@ -74,7 +115,33 @@ async function callGemini(prompt: string): Promise<string> {
 
 export async function GET() {
   try {
-    // 1. 최근 거래 기록 조회
+    await ensureTable();
+
+    const todayDate = getTodayDateKST();
+
+    // 1. 오늘 분석이 있는지 확인
+    const existing = await query<AIInsightRow>(
+      `SELECT * FROM ai_insights WHERE date = $1`,
+      [todayDate]
+    );
+
+    if (existing.length > 0) {
+      // 이미 오늘 분석이 있으면 반환
+      const row = existing[0];
+      return NextResponse.json({
+        analysis: {
+          summary: row.summary,
+          strategy: row.strategy,
+          reason: row.reason,
+          decision: row.decision,
+          direction: row.direction,
+        },
+        generatedAt: row.created_at,
+        isNew: false,
+      });
+    }
+
+    // 2. 새로 생성 필요 - 데이터 수집
     const history = await query<TradeLog>(
       `SELECT * FROM trade_log ORDER BY id DESC LIMIT 10`
     );
@@ -82,7 +149,6 @@ export async function GET() {
     const lastTrade = history.find(h => h.action_taken !== 'INIT');
     const currentHolding = history[0]?.current_holding || 'CASH';
 
-    // 2. Alpaca 계좌 정보
     const [account, positions] = await Promise.all([
       getAccount().catch(() => null),
       getPositions().catch(() => []),
@@ -92,7 +158,6 @@ export async function GET() {
     const unrealizedPL = position ? parseFloat(position.unrealized_pl) : 0;
     const unrealizedPLPC = position ? parseFloat(position.unrealized_plpc) * 100 : 0;
 
-    // 3. 시장 데이터
     const [spyPrices, nvdaPrices, amdPrices] = await Promise.all([
       fetchPriceData('SPY'),
       fetchPriceData('NVDA'),
@@ -104,7 +169,6 @@ export async function GET() {
     const nvdaPrice = nvdaPrices[nvdaPrices.length - 1] || 0;
     const amdPrice = amdPrices[amdPrices.length - 1] || 0;
 
-    // Z-Score 계산
     const minLen = Math.min(nvdaPrices.length, amdPrices.length);
     const ratios = nvdaPrices.slice(-minLen).map((n, i) => n / amdPrices.slice(-minLen)[i]);
     const ratio = ratios[ratios.length - 1] || 0;
@@ -118,8 +182,8 @@ export async function GET() {
     const todayPL = equity - lastEquity;
     const todayPLPC = lastEquity > 0 ? (todayPL / lastEquity) * 100 : 0;
 
-    // 4. Gemini 프롬프트 구성
-    const prompt = `당신은 투자 AI 감독관입니다. 아래 데이터를 바탕으로 오늘의 자동매매 현황을 분석해주세요.
+    // 3. Gemini 프롬프트
+    const prompt = `당신은 투자 AI 감독관입니다. 매일 아침 6시에 자동매매 결과를 분석해서 투자자에게 알려주는 역할이에요.
 
 ## 현재 상황
 - 보유 종목: ${currentHolding === 'CASH' ? '현금 (미보유)' : currentHolding}
@@ -131,78 +195,68 @@ ${position ? `- ${currentHolding} 미실현 손익: ${unrealizedPL >= 0 ? '+' : 
 - SPY: $${spyPrice.toFixed(2)} (200일 이평: $${spy200MA.toFixed(2)}) → ${marketCondition}
 - NVDA: $${nvdaPrice.toFixed(2)}
 - AMD: $${amdPrice.toFixed(2)}
-- Z-Score: ${zScore.toFixed(2)} (NVDA/AMD 비율의 표준편차)
+- Z-Score: ${zScore.toFixed(2)}
 
 ## 최근 판단
 ${lastTrade ? `- 액션: ${lastTrade.action_taken}
-- 이유: ${lastTrade.memo}
-- 시점: ${new Date(lastTrade.timestamp).toLocaleString('ko-KR')}` : '- 아직 거래 기록 없음'}
+- 이유: ${lastTrade.memo}` : '- 아직 거래 기록 없음'}
 
-## 매매 전략 요약
-1. SPY가 200일 이평선 아래면 → 전량 매도 후 현금 대피
-2. 상승장에서 Z-Score > +1 → AMD 매수 (NVDA 고평가)
-3. 상승장에서 Z-Score < -1 → NVDA 매수 (AMD 고평가)
-4. -1 ≤ Z-Score ≤ +1 → 현재 포지션 유지
+## 매매 전략
+1. SPY < 200일 이평선 → 전량 매도 후 현금 대피
+2. 상승장 + Z-Score > +1 → AMD 매수
+3. 상승장 + Z-Score < -1 → NVDA 매수
+4. -1 ≤ Z-Score ≤ +1 → 유지
 
 ---
 
-아래 JSON 형식으로 정확히 응답해주세요:
+아래 JSON 형식으로 응답해주세요:
 {
-  "summary": "한 줄 요약 (30자 이내, 현재 상황을 한마디로)",
-  "strategy": "전략 평가 (80자 이내, 현재 전략이 타당한지)",
-  "reason": "손익 이유 (80자 이내, 오늘 손익이 왜 발생했는지)",
-  "decision": "판단 근거 (80자 이내, 자동매매가 왜 이렇게 판단했는지)"
+  "summary": "오늘의 핵심 상황 요약. 예: 'AMD 주가 하락으로 손실이 발생했어요' 또는 'NVDA 상승으로 수익이 났어요' (40자 이내)",
+  "strategy": "현재 전략이 잘 작동하고 있는지 평가 (60자 이내)",
+  "reason": "오늘 손익이 발생한 구체적인 이유 (60자 이내)",
+  "decision": "자동매매가 이렇게 판단한 근거 설명 (60자 이내)",
+  "direction": "앞으로의 전략 방향과 조언. 이 전략이 계속 유효한지, 주의할 점은 무엇인지 (80자 이내)"
 }
 
-톤: 친근하고 이해하기 쉽게, 토스 앱처럼 간결하게. 전문용어 최소화. 이모지 사용 금지.
-반드시 유효한 JSON만 출력하세요. 다른 텍스트 없이 JSON만.`;
+작성 원칙:
+- 토스 앱처럼 친근하고 쉬운 말투 사용
+- "~해요", "~예요" 체로 작성
+- 전문용어 없이 누구나 이해할 수 있게
+- 이모지 사용 금지
+- 반드시 유효한 JSON만 출력`;
 
     const analysisRaw = await callGemini(prompt);
 
-    // JSON 파싱 시도
     let parsedAnalysis = {
       summary: '',
       strategy: '',
       reason: '',
       decision: '',
+      direction: '',
     };
 
     try {
-      // JSON 블록 추출 (```json ... ``` 형식 처리)
       const jsonMatch = analysisRaw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         parsedAnalysis = JSON.parse(jsonMatch[0]);
       }
     } catch {
-      // JSON 파싱 실패 시 원본 텍스트 사용
-      parsedAnalysis.summary = analysisRaw.trim().slice(0, 100);
+      parsedAnalysis.summary = '분석을 불러오는 중 문제가 발생했어요';
     }
 
-    // 5. 마지막 분석 시간 (한국 시간 기준 오늘 6시)
-    const now = new Date();
-    const kstOffset = 9 * 60 * 60 * 1000;
-    const kstNow = new Date(now.getTime() + kstOffset);
-    const today6AM = new Date(kstNow);
-    today6AM.setHours(6, 0, 0, 0);
-
-    // 현재 시간이 6시 이전이면 어제 6시
-    if (kstNow < today6AM) {
-      today6AM.setDate(today6AM.getDate() - 1);
-    }
+    // 4. DB에 저장
+    await query(
+      `INSERT INTO ai_insights (date, summary, strategy, reason, decision, direction)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (date) DO UPDATE SET
+         summary = $2, strategy = $3, reason = $4, decision = $5, direction = $6, created_at = NOW()`,
+      [todayDate, parsedAnalysis.summary, parsedAnalysis.strategy, parsedAnalysis.reason, parsedAnalysis.decision, parsedAnalysis.direction]
+    );
 
     return NextResponse.json({
       analysis: parsedAnalysis,
-      generatedAt: today6AM.toISOString(),
-      data: {
-        holding: currentHolding,
-        equity,
-        todayPL,
-        todayPLPC,
-        unrealizedPL,
-        unrealizedPLPC,
-        zScore,
-        marketCondition,
-      },
+      generatedAt: new Date().toISOString(),
+      isNew: true,
     });
   } catch (error) {
     console.error('AI Insight API Error:', error);

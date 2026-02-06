@@ -11,11 +11,13 @@ interface AIAnalysis {
   strategy: string;
   reason: string;
   decision: string;
+  direction: string;
 }
 
 interface AIInsight {
   analysis: AIAnalysis;
   generatedAt: string;
+  isNew?: boolean;
 }
 
 export default function DashboardPage() {
@@ -26,6 +28,7 @@ export default function DashboardPage() {
   const [showZScore, setShowZScore] = useState(false);
   const [aiInsight, setAiInsight] = useState<AIInsight | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [showAiDetail, setShowAiDetail] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -258,102 +261,140 @@ export default function DashboardPage() {
         {aiLoading ? (
           <div className="p-5 rounded-2xl bg-[var(--bg-surface)]">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-[var(--blue-light)] flex items-center justify-center">
-                <div className="w-4 h-4 border-2 border-[var(--blue)]/30 border-t-[var(--blue)] rounded-full animate-spin" />
+              <div className="w-10 h-10 rounded-full bg-[var(--blue-light)] flex items-center justify-center">
+                <div className="w-5 h-5 border-2 border-[var(--blue)]/30 border-t-[var(--blue)] rounded-full animate-spin" />
               </div>
               <div>
-                <p className="text-[var(--text-strong)] text-[14px] font-medium">AI 감독관</p>
-                <p className="text-[var(--text-muted)] text-[12px]">분석 중...</p>
+                <p className="text-[var(--text-strong)] text-[15px] font-medium">AI 감독관</p>
+                <p className="text-[var(--text-muted)] text-[13px]">오늘의 분석을 준비하고 있어요</p>
               </div>
             </div>
           </div>
         ) : aiInsight?.analysis ? (
           <div className="rounded-2xl bg-[var(--bg-surface)] overflow-hidden">
-            {/* 헤더: 요약 */}
-            <div className="p-5 pb-4">
+            {/* 메인: 요약 */}
+            <div className="p-5">
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-[var(--blue-light)] flex items-center justify-center flex-shrink-0">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M12 16v-4" />
-                    <path d="M12 8h.01" />
+                <div className="w-10 h-10 rounded-full bg-[var(--blue-light)] flex items-center justify-center flex-shrink-0">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2">
+                    <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z" />
+                    <path d="M6 10v1a6 6 0 0 0 12 0v-1" />
+                    <path d="M12 17v4" />
+                    <path d="M8 21h8" />
                   </svg>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-2">
                     <p className="text-[var(--text-strong)] text-[15px] font-semibold">AI 감독관</p>
-                    <span className="text-[var(--text-muted)] text-[11px]">
-                      {new Date(aiInsight.generatedAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
-                    </span>
+                    <span className="text-[var(--text-muted)] text-[11px]">오늘 오전 6시</span>
                   </div>
-                  <p className="text-[var(--text-strong)] text-[16px] font-medium leading-snug">
+                  <p className="text-[var(--text-strong)] text-[17px] font-medium leading-snug">
                     {aiInsight.analysis.summary}
                   </p>
                 </div>
               </div>
+
+              {/* 더보기 버튼 */}
+              <button
+                onClick={() => setShowAiDetail(!showAiDetail)}
+                className="mt-4 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[var(--bg-base)] text-[var(--blue)] text-[14px] font-medium active:bg-[var(--divider)] transition-colors"
+              >
+                <span>{showAiDetail ? '접기' : '자세히 보기'}</span>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className={`transition-transform ${showAiDetail ? 'rotate-180' : ''}`}
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
             </div>
 
-            {/* 상세 분석 */}
-            <div className="px-5 pb-5 space-y-4">
-              {/* 전략 평가 */}
-              {aiInsight.analysis.strategy && (
-                <div className="flex gap-3">
-                  <div className="w-5 h-5 rounded-full bg-[var(--green-light)] flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3">
-                      <path d="M20 6L9 17l-5-5" />
-                    </svg>
+            {/* 상세 분석 (펼쳤을 때) */}
+            {showAiDetail && (
+              <div className="px-5 pb-5 pt-2 space-y-4 border-t border-[var(--divider)]">
+                {/* 전략 평가 */}
+                {aiInsight.analysis.strategy && (
+                  <div className="flex gap-3">
+                    <div className="w-5 h-5 rounded-full bg-[var(--green-light)] flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-[var(--text-muted)] text-[11px] mb-0.5">전략 평가</p>
+                      <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{aiInsight.analysis.strategy}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[var(--text-muted)] text-[11px] mb-0.5">전략 평가</p>
-                    <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{aiInsight.analysis.strategy}</p>
-                  </div>
-                </div>
-              )}
+                )}
 
-              {/* 손익 이유 */}
-              {aiInsight.analysis.reason && (
-                <div className="flex gap-3">
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${isPositive ? 'bg-[var(--green-light)]' : 'bg-[var(--red-light)]'}`}>
-                    <span className={`text-[10px] font-bold ${isPositive ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
-                      {isPositive ? '↑' : '↓'}
-                    </span>
+                {/* 손익 이유 */}
+                {aiInsight.analysis.reason && (
+                  <div className="flex gap-3">
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${isPositive ? 'bg-[var(--green-light)]' : 'bg-[var(--red-light)]'}`}>
+                      <span className={`text-[10px] font-bold ${isPositive ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
+                        {isPositive ? '↑' : '↓'}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-[var(--text-muted)] text-[11px] mb-0.5">손익 이유</p>
+                      <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{aiInsight.analysis.reason}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[var(--text-muted)] text-[11px] mb-0.5">손익 이유</p>
-                    <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{aiInsight.analysis.reason}</p>
-                  </div>
-                </div>
-              )}
+                )}
 
-              {/* 판단 근거 */}
-              {aiInsight.analysis.decision && (
-                <div className="flex gap-3">
-                  <div className="w-5 h-5 rounded-full bg-[var(--blue-light)] flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="3">
-                      <circle cx="12" cy="12" r="1" />
-                    </svg>
+                {/* 판단 근거 */}
+                {aiInsight.analysis.decision && (
+                  <div className="flex gap-3">
+                    <div className="w-5 h-5 rounded-full bg-[var(--blue-light)] flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="3">
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-[var(--text-muted)] text-[11px] mb-0.5">판단 근거</p>
+                      <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{aiInsight.analysis.decision}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[var(--text-muted)] text-[11px] mb-0.5">판단 근거</p>
-                    <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{aiInsight.analysis.decision}</p>
+                )}
+
+                {/* 전략 방향 */}
+                {aiInsight.analysis.direction && (
+                  <div className="flex gap-3">
+                    <div className="w-5 h-5 rounded-full bg-[var(--blue-light)] flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="3">
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-[var(--text-muted)] text-[11px] mb-0.5">전략 방향</p>
+                      <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{aiInsight.analysis.direction}</p>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="p-5 rounded-2xl bg-[var(--bg-surface)]">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-[var(--bg-base)] flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 16v-4" />
-                  <path d="M12 8h.01" />
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-[var(--bg-base)] flex items-center justify-center flex-shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+                  <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z" />
+                  <path d="M6 10v1a6 6 0 0 0 12 0v-1" />
+                  <path d="M12 17v4" />
+                  <path d="M8 21h8" />
                 </svg>
               </div>
               <div>
-                <p className="text-[var(--text-normal)] text-[14px] font-medium">AI 감독관</p>
-                <p className="text-[var(--text-muted)] text-[12px]">아직 분석이 없어요</p>
+                <p className="text-[var(--text-strong)] text-[15px] font-medium">AI 감독관</p>
+                <p className="text-[var(--text-subtle)] text-[13px] mt-1 leading-relaxed">
+                  매일 아침 6시에 어제의 매매 결과를<br />분석해서 알려드려요
+                </p>
               </div>
             </div>
           </div>
