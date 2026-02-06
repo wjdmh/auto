@@ -6,12 +6,19 @@ import ThemeToggle from '@/components/ThemeToggle';
 
 const REFRESH_INTERVAL = 30_000;
 
+interface AIInsight {
+  analysis: string;
+  generatedAt: string;
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showHow, setShowHow] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
   const [showZScore, setShowZScore] = useState(false);
+  const [aiInsight, setAiInsight] = useState<AIInsight | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -25,11 +32,28 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const fetchAIInsight = useCallback(async () => {
+    setAiLoading(true);
+    try {
+      const res = await fetch('/api/ai-insight');
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (data.analysis) {
+        setAiInsight(data);
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setAiLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
+    fetchAIInsight();
     const t = setInterval(fetchData, REFRESH_INTERVAL);
     return () => clearInterval(t);
-  }, [fetchData]);
+  }, [fetchData, fetchAIInsight]);
 
   if (loading) {
     return (
@@ -220,6 +244,47 @@ export default function DashboardPage() {
             {isPositive ? '+' : ''}${Math.abs(account.todayPL).toFixed(2)} 오늘
           </span>
         </div>
+      </section>
+
+      {/* AI 감독관 */}
+      <section className="px-5 py-5 animate-in" style={{ animationDelay: '75ms' }}>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-6 h-6 rounded-full bg-[var(--blue-light)] flex items-center justify-center">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2">
+              <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z" />
+              <path d="M6 10v1a6 6 0 0 0 12 0v-1" />
+              <path d="M12 17v4" />
+              <path d="M8 21h8" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-[var(--text-strong)] text-[14px] font-medium">AI 감독관</p>
+            {aiInsight && (
+              <p className="text-[var(--text-muted)] text-[11px]">
+                {new Date(aiInsight.generatedAt).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} 오전 6시 분석
+              </p>
+            )}
+          </div>
+        </div>
+
+        {aiLoading ? (
+          <div className="p-4 rounded-2xl bg-[var(--bg-surface)]">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-[var(--text-muted)] border-t-[var(--blue)] rounded-full animate-spin" />
+              <span className="text-[var(--text-subtle)] text-[13px]">분석 중...</span>
+            </div>
+          </div>
+        ) : aiInsight?.analysis ? (
+          <div className="p-4 rounded-2xl bg-[var(--bg-surface)]">
+            <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">
+              {aiInsight.analysis}
+            </p>
+          </div>
+        ) : (
+          <div className="p-4 rounded-2xl bg-[var(--bg-surface)]">
+            <p className="text-[var(--text-subtle)] text-[13px]">아직 분석이 없어요</p>
+          </div>
+        )}
       </section>
 
       <div className="h-[1px] bg-[var(--divider)]" />
