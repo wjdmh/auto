@@ -146,15 +146,37 @@ ${lastTrade ? `- 액션: ${lastTrade.action_taken}
 
 ---
 
-위 내용을 바탕으로 다음을 한국어로 작성해주세요:
-1. 현재 전략이 타당한지 한 문장으로 평가
-2. 오늘의 손익이 발생한 이유를 간단히 설명
-3. 자동매매가 이렇게 판단한 이유를 쉽게 설명
+아래 JSON 형식으로 정확히 응답해주세요:
+{
+  "summary": "한 줄 요약 (30자 이내, 현재 상황을 한마디로)",
+  "strategy": "전략 평가 (80자 이내, 현재 전략이 타당한지)",
+  "reason": "손익 이유 (80자 이내, 오늘 손익이 왜 발생했는지)",
+  "decision": "판단 근거 (80자 이내, 자동매매가 왜 이렇게 판단했는지)"
+}
 
 톤: 친근하고 이해하기 쉽게, 토스 앱처럼 간결하게. 전문용어 최소화. 이모지 사용 금지.
-길이: 전체 150자 이내로 매우 짧게.`;
+반드시 유효한 JSON만 출력하세요. 다른 텍스트 없이 JSON만.`;
 
-    const analysis = await callGemini(prompt);
+    const analysisRaw = await callGemini(prompt);
+
+    // JSON 파싱 시도
+    let parsedAnalysis = {
+      summary: '',
+      strategy: '',
+      reason: '',
+      decision: '',
+    };
+
+    try {
+      // JSON 블록 추출 (```json ... ``` 형식 처리)
+      const jsonMatch = analysisRaw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsedAnalysis = JSON.parse(jsonMatch[0]);
+      }
+    } catch {
+      // JSON 파싱 실패 시 원본 텍스트 사용
+      parsedAnalysis.summary = analysisRaw.trim().slice(0, 100);
+    }
 
     // 5. 마지막 분석 시간 (한국 시간 기준 오늘 6시)
     const now = new Date();
@@ -169,7 +191,7 @@ ${lastTrade ? `- 액션: ${lastTrade.action_taken}
     }
 
     return NextResponse.json({
-      analysis: analysis.trim(),
+      analysis: parsedAnalysis,
       generatedAt: today6AM.toISOString(),
       data: {
         holding: currentHolding,

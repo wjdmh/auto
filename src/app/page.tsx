@@ -6,8 +6,15 @@ import ThemeToggle from '@/components/ThemeToggle';
 
 const REFRESH_INTERVAL = 30_000;
 
+interface AIAnalysis {
+  summary: string;
+  strategy: string;
+  reason: string;
+  decision: string;
+}
+
 interface AIInsight {
-  analysis: string;
+  analysis: AIAnalysis;
   generatedAt: string;
 }
 
@@ -248,41 +255,107 @@ export default function DashboardPage() {
 
       {/* AI 감독관 */}
       <section className="px-5 py-5 animate-in" style={{ animationDelay: '75ms' }}>
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-6 h-6 rounded-full bg-[var(--blue-light)] flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2">
-              <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z" />
-              <path d="M6 10v1a6 6 0 0 0 12 0v-1" />
-              <path d="M12 17v4" />
-              <path d="M8 21h8" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-[var(--text-strong)] text-[14px] font-medium">AI 감독관</p>
-            {aiInsight && (
-              <p className="text-[var(--text-muted)] text-[11px]">
-                {new Date(aiInsight.generatedAt).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} 오전 6시 분석
-              </p>
-            )}
-          </div>
-        </div>
-
         {aiLoading ? (
-          <div className="p-4 rounded-2xl bg-[var(--bg-surface)]">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-[var(--text-muted)] border-t-[var(--blue)] rounded-full animate-spin" />
-              <span className="text-[var(--text-subtle)] text-[13px]">분석 중...</span>
+          <div className="p-5 rounded-2xl bg-[var(--bg-surface)]">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-[var(--blue-light)] flex items-center justify-center">
+                <div className="w-4 h-4 border-2 border-[var(--blue)]/30 border-t-[var(--blue)] rounded-full animate-spin" />
+              </div>
+              <div>
+                <p className="text-[var(--text-strong)] text-[14px] font-medium">AI 감독관</p>
+                <p className="text-[var(--text-muted)] text-[12px]">분석 중...</p>
+              </div>
             </div>
           </div>
         ) : aiInsight?.analysis ? (
-          <div className="p-4 rounded-2xl bg-[var(--bg-surface)]">
-            <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">
-              {aiInsight.analysis}
-            </p>
+          <div className="rounded-2xl bg-[var(--bg-surface)] overflow-hidden">
+            {/* 헤더: 요약 */}
+            <div className="p-5 pb-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-[var(--blue-light)] flex items-center justify-center flex-shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 16v-4" />
+                    <path d="M12 8h.01" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-[var(--text-strong)] text-[15px] font-semibold">AI 감독관</p>
+                    <span className="text-[var(--text-muted)] text-[11px]">
+                      {new Date(aiInsight.generatedAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                  <p className="text-[var(--text-strong)] text-[16px] font-medium leading-snug">
+                    {aiInsight.analysis.summary}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 상세 분석 */}
+            <div className="px-5 pb-5 space-y-4">
+              {/* 전략 평가 */}
+              {aiInsight.analysis.strategy && (
+                <div className="flex gap-3">
+                  <div className="w-5 h-5 rounded-full bg-[var(--green-light)] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[var(--text-muted)] text-[11px] mb-0.5">전략 평가</p>
+                    <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{aiInsight.analysis.strategy}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* 손익 이유 */}
+              {aiInsight.analysis.reason && (
+                <div className="flex gap-3">
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${isPositive ? 'bg-[var(--green-light)]' : 'bg-[var(--red-light)]'}`}>
+                    <span className={`text-[10px] font-bold ${isPositive ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
+                      {isPositive ? '↑' : '↓'}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-[var(--text-muted)] text-[11px] mb-0.5">손익 이유</p>
+                    <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{aiInsight.analysis.reason}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* 판단 근거 */}
+              {aiInsight.analysis.decision && (
+                <div className="flex gap-3">
+                  <div className="w-5 h-5 rounded-full bg-[var(--blue-light)] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="3">
+                      <circle cx="12" cy="12" r="1" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[var(--text-muted)] text-[11px] mb-0.5">판단 근거</p>
+                    <p className="text-[var(--text-normal)] text-[14px] leading-relaxed">{aiInsight.analysis.decision}</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
-          <div className="p-4 rounded-2xl bg-[var(--bg-surface)]">
-            <p className="text-[var(--text-subtle)] text-[13px]">아직 분석이 없어요</p>
+          <div className="p-5 rounded-2xl bg-[var(--bg-surface)]">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-[var(--bg-base)] flex items-center justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 16v-4" />
+                  <path d="M12 8h.01" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-[var(--text-normal)] text-[14px] font-medium">AI 감독관</p>
+                <p className="text-[var(--text-muted)] text-[12px]">아직 분석이 없어요</p>
+              </div>
+            </div>
           </div>
         )}
       </section>
